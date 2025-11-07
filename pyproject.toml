@@ -1,0 +1,19 @@
+[project]
+name = "payqr"
+version = "0.1.0"
+description = "IPS QR code generator with GUI and CLI"
+readme = "README.md"
+authors = [ { name = "Leodanis Pozo Ramos" } ]
+requires-python = ">=3.10"
+dependencies = [
+  "qrcode[pil]>=7.4",
+  "Pillow>=10.0.0",
+  "tomli>=2.0.1; python_version < '3.11'",
+]
+
+[project.scripts]
+payqr = "gui.app:main"
+payqr-cli = "payqr.__main__:main"
+
+[tool.uv]
+package = true

@@ -1,0 +1,20 @@
+# QR payload rendering configuration
+separator = "|"
+kv_sep = ":"
+trim_empty = true
+
+# Fixed IPS fields (always included, read-only in GUI)
+[IdentificationCode]
+key = "K"
+value = "PR"
+required = true
+
+[Version]
+key = "V"
+value = "01"
+required = true
+
+[CodeSet]
+key = "C"
+value = "1"
+required = true

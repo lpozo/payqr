@@ -1,0 +1,41 @@
+# Variable fields
+[BeneficiaryAccountNumber]
+key = "R"
+value = "123456789012345678"
+required = true
+description = "Beneficiary Account Number"
+
+[BeneficiaryName]
+key = "N"
+value = "Beneficiary Name..."
+required = true
+description = "Beneficiary Name: e.g., Company XYZ, 456 Business St, City"
+
+[Amount]
+key = "I"
+value = "RSD9000,00"
+required = true
+description = "Payment Amount"
+
+[PayerDetails]
+key = "P"
+value = "Payer Details..."
+required = true
+description = "Payer Details: e.g., John Doe, 123 Main St, City"
+
+[PaymentCode]
+key = "SF"
+value = "253"
+required = true
+description = "Payment Code: e.g., 253"
+
+[PaymentPurpose]
+key = "S"
+value = "Payment Purpose..."
+required = true
+description = "Payment Purpose: e.g., Invoice 12345, Service Payment"
+
+[RecipientDetails]
+key = "RO"
+value = "123456789012345678"
+required = true
