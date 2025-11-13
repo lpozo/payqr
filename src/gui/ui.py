@@ -103,6 +103,57 @@ class PayQRApp(ttk.Frame):
         )
         self.modified_var.set(modified)
 
+    def _validate_account_input(self, new_value: str) -> bool:
+        """Validate beneficiary account number input (max 18 digits).
+
+        Returns True if the input is valid (empty or <= 18 digits), False otherwise.
+        """
+        if new_value == "":
+            return True
+        # Remove non-digit characters for counting
+        digits_only = re.sub(r"\D", "", new_value)
+        return len(digits_only) <= 18
+
+    def _validate_amount_input(self, new_value: str) -> bool:
+        """Validate amount input (digits and comma for decimal separator).
+
+        Returns True if the input is valid format, False otherwise.
+        Allows digits and at most one comma.
+        """
+        if new_value == "":
+            return True
+        # Allow only digits and comma
+        if not re.match(r"^[\d,]*$", new_value):
+            return False
+        # Allow at most one comma
+        if new_value.count(",") > 1:
+            return False
+        return True
+
+    def _pad_account_number(self, account: str) -> str:
+        """Pad beneficiary account number to 18 digits.
+
+        If the account doesn't have 18 digits, insert zeros after index 2
+        until it reaches 18 digits total.
+
+        Example: "1234567890" -> "120000000034567890"
+        """
+        # Remove any non-digit characters
+        digits_only = re.sub(r"\D", "", account)
+
+        if len(digits_only) == 18:
+            return digits_only
+
+        if len(digits_only) < 18:
+            # Insert zeros after index 2
+            prefix = digits_only[:3] if len(digits_only) >= 3 else digits_only
+            suffix = digits_only[3:] if len(digits_only) >= 3 else ""
+            zeros_needed = 18 - len(digits_only)
+            return prefix + ("0" * zeros_needed) + suffix
+
+        # If more than 18 digits, truncate to 18
+        return digits_only[:18]
+
     def setup_ui(self):
         """Create the user interface."""
         # Template selector
@@ -188,6 +239,10 @@ class PayQRApp(ttk.Frame):
                 )
                 amount_entry.pack(side="left", fill="x", expand=True)
 
+                # Add validation for amount format (comma as decimal separator)
+                vcmd_amount = (self.register(self._validate_amount_input), "%P")
+                amount_entry.config(validate="key", validatecommand=vcmd_amount)
+
                 # Store a combined var that concatenates currency + amount
                 combined_var = tk.StringVar(value=field["value"])
                 self.vars[field["key"]] = combined_var
@@ -221,6 +276,21 @@ class PayQRApp(ttk.Frame):
                 )
             else:
                 entry = ttk.Entry(self.form_frame, textvariable=var, width=40)
+
+                # Add validation and auto-padding for beneficiary account number
+                if field["key"] == "R":
+                    # Register validation command to limit to 18 digits
+                    vcmd = (self.register(self._validate_account_input), "%P")
+                    entry.config(validate="key", validatecommand=vcmd)
+
+                    def on_account_focus_out(event, v=var):
+                        current = v.get()
+                        padded = self._pad_account_number(current)
+                        if current != padded:
+                            v.set(padded)
+
+                    entry.bind("<FocusOut>", on_account_focus_out)
+
             entry.grid(row=idx, column=1, sticky="ew", padx=4, pady=2)
 
         self.form_frame.columnconfigure(1, weight=1)
@@ -252,6 +322,11 @@ class PayQRApp(ttk.Frame):
 
     def payload(self) -> str:
         overrides = {k: v.get() for k, v in self.vars.items()}
+
+        # Pad beneficiary account number to 18 digits if needed
+        if "R" in overrides:
+            overrides["R"] = self._pad_account_number(overrides["R"])
+
         return self.template_mgr.render_payload(overrides)
 
     def _save_template_if_modified(self):
@@ -261,7 +336,7 @@ class PayQRApp(ttk.Frame):
 
         try:
             template_name = self.current_template
-            
+
             # If modifying default template, prompt for new template name
             if template_name == "default":
                 # Prompt for new template name
@@ -269,60 +344,82 @@ class PayQRApp(ttk.Frame):
                 dialog.title("Save Template As")
                 dialog.transient(self)
                 dialog.grab_set()
-                
+
                 frame = ttk.Frame(dialog, padding=20)
                 frame.grid(row=0, column=0, sticky="nsew")
-                
-                ttk.Label(frame, text="You are modifying the default template.", 
-                         font=("TkDefaultFont", 9, "bold")).grid(
-                    row=0, column=0, columnspan=2, sticky="w", pady=(0, 8)
-                )
-                
+
+                ttk.Label(
+                    frame,
+                    text="You are modifying the default template.",
+                    font=("TkDefaultFont", 9, "bold"),
+                ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+
                 ttk.Label(frame, text="Enter new template name:").grid(
                     row=1, column=0, columnspan=2, sticky="w", pady=(0, 4)
                 )
-                
+
                 name_var = tk.StringVar()
                 entry = ttk.Entry(frame, textvariable=name_var, width=30)
                 entry.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(0, 12))
                 entry.focus_set()
-                
+
                 result = {"save": False, "name": ""}
-                
+
                 def on_ok():
                     name = name_var.get().strip()
                     if not name:
-                        messagebox.showerror("Error", "Template name cannot be empty.", parent=dialog)
+                        messagebox.showerror(
+                            "Error", "Template name cannot be empty.", parent=dialog
+                        )
                         return
                     # Sanitize name
                     import re
+
                     sanitized = re.sub(r"[^A-Za-z0-9_-]", "_", name)
                     if sanitized in self.template_names:
-                        messagebox.showerror("Error", f"Template '{sanitized}' already exists.", parent=dialog)
+                        messagebox.showerror(
+                            "Error",
+                            f"Template '{sanitized}' already exists.",
+                            parent=dialog,
+                        )
                         return
                     result["save"] = True
                     result["name"] = sanitized
                     dialog.destroy()
-                
+
                 def on_cancel():
                     dialog.destroy()
-                
+
                 button_frame = ttk.Frame(frame)
                 button_frame.grid(row=3, column=0, columnspan=2, sticky="e")
-                ttk.Button(button_frame, text="OK", command=on_ok).pack(side="left", padx=(0, 4))
-                ttk.Button(button_frame, text="Cancel", command=on_cancel).pack(side="left")
-                
+                ttk.Button(button_frame, text="OK", command=on_ok).pack(
+                    side="left", padx=(0, 4)
+                )
+                ttk.Button(button_frame, text="Cancel", command=on_cancel).pack(
+                    side="left"
+                )
+
                 # Center dialog
                 dialog.update_idletasks()
-                x = self.winfo_rootx() + (self.winfo_width() // 2) - (dialog.winfo_width() // 2)
-                y = self.winfo_rooty() + (self.winfo_height() // 2) - (dialog.winfo_height() // 2)
+                x = (
+                    self.winfo_rootx()
+                    + (self.winfo_width() // 2)
+                    - (dialog.winfo_width() // 2)
+                )
+                y = (
+                    self.winfo_rooty()
+                    + (self.winfo_height() // 2)
+                    - (dialog.winfo_height() // 2)
+                )
                 dialog.geometry(f"+{x}+{y}")
-                
+
                 dialog.wait_window()
-                
+
                 if not result["save"]:
                     return  # User cancelled
-            
+                # Use the provided name for the new template
+                template_name = result["name"]
+
             template_path = self.templates_dir / f"{template_name}.toml"
 
             # Build TOML content with current values
@@ -347,7 +444,7 @@ class PayQRApp(ttk.Frame):
 
             # Write file
             template_path.write_text("".join(lines), encoding="utf-8")
-            
+
             # If we saved as a new template, switch to it
             if template_name != self.current_template:
                 self.current_template = template_name
@@ -386,7 +483,7 @@ class PayQRApp(ttk.Frame):
             img = self.qr.generate_qr_image(payload)
             self._last_image = ImageTk.PhotoImage(img)
             self.preview_label.configure(image=self._last_image)
-            
+
             # Then auto-save if modified
             self._save_template_if_modified()
         except Exception as e:
@@ -466,6 +563,10 @@ class PayQRApp(ttk.Frame):
                 )
                 amount_entry.pack(side="left", fill="x", expand=True)
 
+                # Add validation for amount format (comma as decimal separator)
+                vcmd_amount = (self.register(self._validate_amount_input), "%P")
+                amount_entry.config(validate="key", validatecommand=vcmd_amount)
+
                 combined_var = tk.StringVar(value=field["value"])
                 self.vars[field["key"]] = combined_var
 
@@ -494,8 +595,22 @@ class PayQRApp(ttk.Frame):
                 )
             else:
                 entry = ttk.Entry(self.form_frame, textvariable=var, width=40)
+
+                # Add validation and auto-padding for beneficiary account number
+                if field["key"] == "R":
+                    # Register validation command to limit to 18 digits
+                    vcmd = (self.register(self._validate_account_input), "%P")
+                    entry.config(validate="key", validatecommand=vcmd)
+
+                    def on_account_focus_out(event, v=var):
+                        current = v.get()
+                        padded = self._pad_account_number(current)
+                        if current != padded:
+                            v.set(padded)
+
+                    entry.bind("<FocusOut>", on_account_focus_out)
+
             entry.grid(row=idx, column=1, sticky="ew", padx=4, pady=2)
 
         self.form_frame.columnconfigure(1, weight=1)
         self._store_original_values()
-
